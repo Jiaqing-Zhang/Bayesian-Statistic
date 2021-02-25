@@ -1,0 +1,175 @@
+---
+title: "Task 2"
+author: "Jiaqing Zhang"
+date: "2/16/2019"
+output: html_document
+---
+
+####1 Intergovernmental Panel on Climate Change
+
+Bayesian inference is the process of fitting a probability model to a set of data and summarizing the result by a probability distribution on the parameters of the model and on unobserved quantities such as predictions for new observations. The Bayesian approach allows to incorporate multiple levels of randomness and to combine information from different sources, while incorporating all reasonable sources of uncertainty in inferential summaries. In general, the Bayesian approach will start with the “prior distribution” before looking at the data. After collecting the data, the Bayesian would update the prior distribution in light of the data to get a new probability distribution, which is the posterior distribution. Using the posterior distribution, the confidence interval could be found. The conclusion “The period from 1983 to 2012 was likely the warmest 30-year period of the last 1400 years in the Northern Hemisphere, where such assessment is possible (medium confidence)” are Bayesian. According to the WGI 5.3.5, the reconstruction approach and the high-resolution proxy records were used to reconstruct NH’s temperature variation. They considered the ensemble of computer models as being drawn from a superpopulation of such models, and used hierarchical Bayesian models to combine results and compute the posterior predictive distribution for a new climate model’s projections along with the uncertainty to be associated with them. Moreover, as the page 411 describes, “Bayesian hierarchical models enable a more explicit representation of the underlying processes that relate proxy (and instrumental) records to climate, allowing a more systematic treatment of the multiple uncertainties that affect the climate reconstruction process”. The footnotes also explain the five qualifiers to assess likelihood of an results, which can be seens as the Bayesian assessment. 
+
+In contrast,  the Frequentist only allows probability statements about sampling. The conclusion “The globally averaged combined land and ocean surface temperature data as calculated by a linear trend show a warming of 0.85 [0.65 to 1.06] °C 2 over the period 1880 to 2012, when multiple independently produced datasets exist” are Frequentists. According to the WGI 2.4.3, these decisions are from several datasets. These datasets recorded information for a long time. HadCRUT4 better samples the NH high latitude land region. And in different datasets, the warmest years were found and compared. The samples ere collected for making statement. 
+
+
+####2.1 Drawing from the prior
+```{r}
+  numerator<-rnorm(1000000, mean=3.7, sd=0.2*3.7)
+  denom<-rnorm(1000000, mean=-1.6, sd=1.6*0.5)
+  ECS_draw<-(-numerator)/denom
+  hist(ECS_draw)
+```
+
+
+####2.2 Truncating the Prior
+The proportion that the original one million realizations satisfy the condition is 0.936659.
+```{r}
+ECS_truncate<-subset(ECS_draw, ECS_draw>=0 & ECS_draw<=10)
+hist(ECS_truncate)
+length(ECS_truncate)/length(ECS_draw)
+```
+
+
+####2.3 Describing the Prior
+The row "prior" and "broad prior" are well reproduced.
+```{r}
+
+prior_list_1<-c(1.5, 2.0, 4.0, 4.5, 6.0)
+prior_list_2<-c("<", "<", ">", ">", ">")
+
+ ####get the data for broader prior with 0.75lambda and 0.25F
+  numerator_broader<-rnorm(1000000, mean=3.7, sd=0.25*3.7)
+  denom_broader<-rnorm(1000000, mean=-1.6, sd=1.6*0.75)
+  ECS_draw_broader<-(-numerator_broader)/denom_broader
+  hist(ECS_draw_broader)
+  ####get the truncate broader prior
+  ECS_truncate_broader<-subset(ECS_draw_broader, ECS_draw_broader>=0 & ECS_draw_broader<=10)
+  hist(ECS_truncate_broader)
+  length(ECS_truncate_broader)/length(ECS_draw_broader)
+
+S3_prior<-function (a, x, b){
+if (a==1){
+  if (b=="<"){
+     out<-sum(ECS_truncate < x)/length(ECS_truncate)
+  }
+  else if (b==">"){
+    out<-sum(ECS_truncate > x)/length(ECS_truncate)
+  }
+}
+  else if (a==2) {
+   if (b=="<"){
+     out<-sum(ECS_truncate_broader < x)/length(ECS_truncate_broader)
+  }
+  else  if (b==">"){
+    out<-sum(ECS_truncate_broader > x)/length(ECS_truncate_broader)
+  }
+ } 
+  
+return (round(out, 2))
+}
+
+##first row of the table (Prior)
+prior_data<-rep(1, 5)
+mapply(S3_prior, prior_data , x=prior_list_1, b=prior_list_2)
+
+##second row of the table (Broad Prior)
+prior_broad_data<-rep(2, 5)
+mapply(S3_prior, prior_broad_data , x=prior_list_1, b=prior_list_2)
+```
+
+
+####2.4 PDF of Ratio of Normals
+```{r}
+library("rstan")
+rstan::expose_stan_functions("normal_ratio_pdf.stan")
+```
+
+
+####2.5 Admissibility
+The PDF of ECS in the sample space should be in (0, 1). The CDF of ECS for the entire sample space should be equal to 1. (The integral of PDF for the sample space is 1).
+```{r}
+rstan::expose_stan_functions("normal_ratio_pdf.stan")
+sample.space <- seq(0, 10, length.out = 100)
+y <- normal_ratio_pdf(z = sample.space, mu_X= -3.7, mu_Y= -1.6, sigma_X =0.74 , sigma_Y =0.8 )
+plot(sample.space, y, type="l")
+integrate(f = normal_ratio_pdf, lower = -Inf, upper = Inf, mu_X= -3.7, mu_Y= -1.6, sigma_X =0.74 , sigma_Y =0.8)
+```
+
+
+####2.6 Visualizing the Prior
+This ditribution of this plot is identicial to that of the plot in "Describing the Prior" subproblem. 
+```{r}
+curve(normal_ratio_pdf(z, mu_X= -3.7, mu_Y= -1.6, sigma_X =0.74 , sigma_Y =0.8),  xname = "z", from=0, to=10, col=2, lty=2, ylab="PDF of ECS" )
+```
+
+
+####2.7 The Likelihood Function
+```{r}
+rstan::expose_stan_functions("likelihood.stan")
+```
+
+####2.8 Visualizing the Likelihood Function
+```{r}
+curve(likelihood(chi, e_j=c(0.25), c_j=c(1.50)), xname = "chi",from=0, to=7, ylab="likelihood", ylim=c(0, 1))
+curve(likelihood(chi, e_j=c(0.35), c_j=c(1.50)), add = TRUE, xname = "chi",  col= "violet")
+curve(likelihood(chi, e_j=c(0.20), c_j=c(2.00)), add = TRUE, xname = "chi",  col= "green")
+curve(likelihood(chi, e_j=c(0.75), c_j=c(4.00)), add = TRUE, xname = "chi",  col= "red", lty=3)
+curve(likelihood(chi, e_j=c(0.65), c_j=c(4.50)), add = TRUE, xname = "chi",  col= "blue", lty=3)
+curve(likelihood(chi, e_j=c(0.60), c_j=c(4.50)), add = TRUE, xname = "chi",  col= "orange", lty=3)
+legend("topleft", legend = c("Low ECS storyline", "High ECS storyline"), lty = c(1, 3))
+```
+
+
+####2.9 Generative Model
+
+(1) Endogenous but knownable: the outcomes is the endogenous but knownable. The evidence presented as storyline, S, is endogenous but knowable. $e_j$, which is the evidence related to the $j$th condition for the storyline, is endogenous but knowable. 
+
+(2) Exogenous but unknowable: the parameters are the exogenous but unknowable. The $F$ and $\lambda$ for prior is exogenous but unkowable. 
+(3) Exogenous but knowable: the size, predictors, prior mean/standard deviation are exogenous but knowables. The mean and standard deivation of $\sigma_f$ and the $\sigma_\lambda$ are exgoneous but knowable. The $\chi_j$ is also exogenous but knowable. 
+
+(4) Endogenous but unknowable: the intermediates, predictions, utility are endogenous but unknowable.
+
+
+####2.10 Posterior PDF
+```{R}
+nom<-function (chi){
+  ##the prior pdf
+  prior_pdf<-normal_ratio_pdf(chi, mu_X= -3.7, mu_Y= -1.6, sigma_X =0.74 , sigma_Y =0.8)
+  ##the likelihood
+  likelihood_function<-likelihood(chi, e_j=0.25, c_j=1.50)*likelihood(chi, e_j=0.35, c_j=1.50)*likelihood(chi, e_j=0.20, c_j=2.00)*likelihood(chi, e_j=0.75, c_j=4.00)*likelihood(chi, e_j=0.65, c_j=4.50)*likelihood(chi, e_j=0.60, c_j=4.50)
+
+  #the multiplication of these two
+  nom<-prior_pdf * likelihood_function
+  return(nom)
+}
+denom<-integrate(nom, lower=-Inf, upper = Inf)$value
+
+
+curve(nom(chi) / denom, xname="chi", from=0, to=10, xlab="chi", ylab="p(x)", ylim=c(0, 0.6), xlim=c(0,7), col="blue")
+curve(normal_ratio_pdf(chi, mu_X= -3.7, mu_Y= -1.6, sigma_X =0.74 , sigma_Y =0.8), add = TRUE, xname = "chi", from=0, to=10, col="black")
+legend("topright", legend=c("posterior", "prior"),col = c("blue", "black"))
+```
+
+####2.11 Describing the Posterior
+```{r}
+post<-function(x){
+  return(nom(x)/denom)
+}
+
+p_row<-function(x, y){
+  if (y=="<"){
+    result<-integrate(post, lower=0, upper=x)$value
+  }
+  else{
+    result<-integrate(post, lower=x, upper=10)$value
+  }
+  return(result)
+}
+
+round(mapply(p_row, prior_list_1, prior_list_2),2)
+```
+
+
+
+
+

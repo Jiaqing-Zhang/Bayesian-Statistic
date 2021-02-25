@@ -1,0 +1,161 @@
+---
+title: "Task 5"
+author: "Jiaqing Zhang"
+date: "4/14/2019"
+output: html_document
+---
+
+###1.1 Prior Predictive Distribution
+```{r, warning=FALSE}
+rstan::expose_stan_functions("meta_prior_rng.stan") 
+writeLines(readLines("meta_prior_rng.stan"))
+#sigma_study<-c(0.1976901, 0.1361155, 0.1915920, 0.1700769, 0.8237545, 0.2480540, 0.7601798)
+#test<-meta_prior_rng(200, 7, sigma_study)
+
+##the second form tends to be more efficient than the first method. See the answer.
+```
+
+###1.2 Boundary Issues
+
++ $\tau$ or $\tau^2$ is the sauce of the variance of the latent true effect size. Boundary estimation of $\tau$, in other words, underestimating $\tau$ will result very narrow confidence intervals (the coverage of confidence intervals for the overall effect is below the nominal level) and then "liberal estimates of $\mu$" (p.2). Moreover, the boundary estimates may also result in non-significant tests of homogeneity.   
++ The choice of the prior for $\tau$ or $\tau^2$ has a large impact on statistical inference, especially when the number of study is very small. Thus, the gold rule is that the prior should be chosen to be weakly informative, which avoids the problem of boundary estimation while at the same time keeps faithful to the data.    
+With the gamma prior on $\tau$, the log posterior could be 
+                    $p(\mu, \tau|y)=l(\mu, \tau^2) +(\alpha -1)*log(\tau)-\lambda\tau+c_1$. 
+If we select $\alpha>1$, then the gamma density is 0 at origin. The posterior density for $\tau$ cannot have a mode at the boundary even if the likelihood function is maximized at the boundary. If we use a Gamma prior with shape between 0 and 1, there is no mode for the gamma distribution and the density grows to infinity as x approaches 0. Thus, the density is infinity at the boundary for Gamma prior with shape between 0 and 1. The problem of boundary estimation may not be solved. The gamma prior with shape between 0 and 1 is flat apart from the spike near zero. Unless the posterior mean is concentrated away from zero (then this prior may be used as a non-informative prior for variances in multilevel models), otherwise, it posterior will be greatly influenced by the hyperparameters of the Gamma prior. 
+
+###1.3 Posterior Distribution
+
++ Towel Example
+```{r, warning=FALSE,message=FALSE}
+library(metaBMA)
+library(brms)
+##towel reuse in hotels
+dim(towels)
+
+prior_HC<-c(set_prior("normal(0, 1)", class="Intercept"), set_prior("cauchy(0, 0.3)", class="sd"))
+m1<-brm(logOR|se(SE)~1+(1|study),
+        family=gaussian, data=towels, prior=prior_HC,
+        control = list(adapt_delta = 0.99),        
+        chains = 2, cores = 2, iter = 4000, warmup = 1000)
+out.m1<-summary(m1)  
+
+
+prior_ig<-c(set_prior("normal(0, 1)", class="Intercept"), set_prior("inv_gamma(1, 0.15)", class="sd"))
+m2<-brm(logOR|se(SE)~1+(1|study),
+        family=gaussian, data=towels, prior=prior_ig,
+        control = list(adapt_delta = 0.99),
+        chains = 2, cores = 2, iter = 4000, warmup = 1000)
+out.m2<-summary(m2)      
+ 
+##summary table for towels example
+towel_output<-matrix(, 2, 6)
+rownames(towel_output)<-c("HC(0, 0.3)", "IG(1, 0.15)")
+colnames(towel_output)<-c("Cohen's d", "95% L", "95% H", "Tau",  "95% L", "95% H")
+
+towel_output[1, 1]<-out.m1$fixed[1]
+towel_output[1, 2]<-out.m1$fixed[3]  
+towel_output[1, 3]<-out.m1$fixed[4]  
+towel_output[1, 4]<-out.m1$random$study[1]
+towel_output[1, 5]<-out.m1$random$study[3]
+towel_output[1, 6]<-out.m1$random$study[4]
+
+towel_output[2, 1]<-out.m2$fixed[1]
+towel_output[2, 2]<-out.m2$fixed[3]  
+towel_output[2, 3]<-out.m2$fixed[4]  
+towel_output[2, 4]<-out.m2$random$study[1]
+towel_output[2, 5]<-out.m2$random$study[3]
+towel_output[2, 6]<-out.m2$random$study[4]
+```
+```{r}
+towel_output
+```
+
++ Power Pose Example
+```{r,warning=FALSE,message=FALSE}
+##power pose experiment
+dim(power_pose)
+
+m3<-brm(effectSize|se(SE)~1+(1|study),
+        family=gaussian, data=power_pose, prior=prior_HC,
+        control = list(adapt_delta = 0.99), 
+        chains = 4, cores = 2, iter = 4000, warmup = 1000)
+out.m3<-summary(m3)        
+        
+m4<-brm(effectSize|se(SE)~1+(1|study),
+        family=gaussian, data=power_pose, prior=prior_ig,
+        control = list(adapt_delta = 0.99),
+        chains = 2, cores = 2, iter = 4000, warmup = 1000)
+out.m4<-summary(m4) 
+
+##summary table for power pose example
+power_output<-matrix(, 2, 6)
+rownames(power_output)<-c("HC(0, 0.3)", "IG(1, 0.15)")
+colnames(power_output)<-c("Cohen's d", "95% L", "95% H", "Tau",  "95% L", "95% H")
+power_output[1, 1]<-out.m3$fixed[1]
+power_output[1, 2]<-out.m3$fixed[3]  
+power_output[1, 3]<-out.m3$fixed[4]  
+power_output[1, 4]<-out.m3$random$study[1]
+power_output[1, 5]<-out.m3$random$study[3]
+power_output[1, 6]<-out.m3$random$study[4]
+
+power_output[2, 1]<-out.m4$fixed[1]
+power_output[2, 2]<-out.m4$fixed[3]  
+power_output[2, 3]<-out.m4$fixed[4]  
+power_output[2, 4]<-out.m4$random$study[1]
+power_output[2, 5]<-out.m4$random$study[3]
+power_output[2, 6]<-out.m4$random$study[4]
+```
+```{r}
+power_output
+```
+
+###1.4 Accounting for Authorship
+```{r, warning=FALSE}
+##if we treat the authorship variance as exogenous unknown, in this function example, we will believe that it follows a inverse gamma distribution (1, 0.18)
+rstan::expose_stan_functions("meta_authorship2_rng.stan") 
+24/writeLines(readLines("meta_authorship2_rng.stan"))
+#sigma_study<-c(0.1976901, 0.1361155, 0.1915920, 0.1700769, 0.8237545, 0.2480540, 0.7601798)
+#author_id<-c(1, 1, 2, 2, 3, 4, 4)
+#M<-4
+#test2<-meta_authorship2_rng(200, 7, sigma_study, author_id, M)
+
+
+##if we treat the authorship variance as exogenous known, we simply pass it as an arguement.
+rstan::expose_stan_functions("meta_authorship_rng.stan") 
+writeLines(readLines("meta_authorship_rng.stan"))
+#author_sd<-c(0.8, 0.8, 0.4, 0.4, 0.6,  0.45, 0.45)
+#test3<-meta_authorship_rng(200, 7, sigma_study, author_sd )
+```
+
+
+###1.5 Estimated Standard Errors
+1.  
++ By using the Frequentists methods to obtain the estimations and standard errors, one problem, as stated in the paper, is that boundary estimation of the between-study variance. A precise estimation of between-study variance in very important for the statistical inference. For example, it relates to the estimation of the random intercept and then the overall intercept. It will also affect the estimation of CIs.     
++ Under the hierarchical model setting, the error part estimated using the Frequentist approach is always larger than the error estimated using the Bayesian approach. As shown below, 
+
+If we use Frequentist estimated standard error for the Bayesian approach, parts of the deviations from the global intercept in the group-level will be treated as standard error estimation. Then, the estimation of the intercepts, both random intercepts and fixed intercept, will be not correct. And the estimated credible intervals may be not correct, as well.
+
+2.
++ Taking the **towel** data as an example (ID represents the id for individual level):   
+     stan_glmer(logOR|se(SE)~1+(1|study)+(1|ID), family=gaussian, data=towels)
+     (1) The fixed effect captures the population average (population mean).
+     (2) There are two random intercepts. The first intercept is the study level, which ensures that the intercept and standard deviation varies from one study to the other.
+     (3) The second random intercept is the individual level. It enables that the within each study, the intercept varies from one individual to another.
+
+ 
+###1.6 Power Poses
+1.
++ The important aspects of the Crisis in Psychology should include the study design and data analysis, publication process and institutional incentives (Asendorpf et al, 2013). For the recommendations for study design and data analysis, (1) increasing replicability by decreasing sources of error; (2) increasing sample sizes and the statistical power; (3) increasing the validity and reliability of the study; (4) increasing the study design sensitivity; (5) increasing adequacy of statistical analyses; (6) controlling for type I error rate for multiple testing. The results of the study should be well-reproduced to break the crisis in psychology. A validity refers to whether or jot the test measures what it claims to measure. A test with high validity the items will be closely linked to the latent variable that the test would like to measure. Moreover the study should remain high reliability. The reliability refers to the consistency of a research study. For the recommendations for the publication process, (1) increasing research transparency; (2) accelerate scientific process. For recommendations for institutional incentives, (1) focusing on quality instead of quantity of publications; (2) using funding decisions to support good research practices; (3) revising tenure standards; (3) changing informal incentives.    
+
+2.
++ There are many benefits in adopting the Bayesian approach. There are many criticisms of the classical Frequentist approach, for example, the decision based on the hypothesis testing and p-value/confidence interval may be misleading. However, most of the psychologists largely depend on p-value to make their decision. The boundary estimation is one example that the Frequentists' approach inappropriately deal with the issue. It may cause the imprecise results and change/influence the conclusion. And some people believe that using the p-value to accept or reject the conclusion seems to be too subjective.        
++ Using Bayesian approach, the researchers could quantify evidence and monitor the progression as data come in or more cases come in in a continuous scale. The prior distribution of one study could be got by referring to a previous similar study (prior knowledge), and then this prior distribution could combine with the information of the data (condition on what is known) to form the posterior distribution. The belief is constantly updating with more information/data available.      
++ Moreover, the Bayesian approach could help the research monitor the evidence as data accumulate.The uncertainty could be further quantified by referring to the posterior distribution.    
++ Thus, the Bayesian approach enables the researchers to quantify confidence that parameters of interest lie in a specific interval. With more concrete and correct belief and information about the parameters that related to the topic of the study, the next study could be well-designed. The Crisis in Psychology could be avoided.  
+
+
++ subjectivity and objectivity
+
+
+
+

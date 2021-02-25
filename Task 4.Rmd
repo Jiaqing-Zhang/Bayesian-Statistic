@@ -1,0 +1,158 @@
+---
+title: "Task 4"
+author: "Jiaqing Zhang"
+date: "3/31/2019"
+output: html_document
+---
+
+
++ For different counties, the shotting rate ($\pi$ in Bernoulli distribution) may be not the same. For example, the shotting rate in larger cities may significant higher than that for a relative smaller countries. Thus, just combining all observations from all counties may not reasonable. 
++ The race should consist of other races people besides White, Black and Hispanic. For example, Asian and Pacific Islanders.
++ The author also categorized the outcome variable between two conditions: armed with a weapon or unarmed. However, the author did not take into consideration of the people that not get shot. Thus, his outcome is not cover all the sample space and the categories of the outcome are not mutually exclusive.  
++ Also, for each racial group, the shotting rate may not identical. 
++ Moreover, as stated in the questions, the categories of the outcome should also take into consideration of the number of people armed or unarmed shot by the police. The outcome's categories are more than 2 levels. Thus, this question could be be treated as a binomial model. Instead, it should be considered as a polynomial model. Since the categories of the outcome are not ordered responses. Thus, we can use the multinomial models, such as the nominal logistic regression, to deal with this question. 
+
+
+
+###1.2 Drawing from the Prior Distribution     
+Since this is a multinomial logistic model, let the people not shot be the reference group. Thus, $\pi_1$ is the rate of the number of people not shot, $\pi_2$ is the rate of the number of people shot while unarmed, and $\pi_3$ is the rate of the number of people shot while armed. Thus, the models are:    
+$log(\frac{\pi_2}{\pi_1}) = \alpha_{02} + \beta_{12} \times race + \varepsilon $      
++ for white -- $log(\frac{\pi_2}{\pi_1}) = \alpha_{02} + \beta_{12}  + \varepsilon $     
++ for non_white -- $log(\frac{\pi_2}{\pi_1}) = \alpha_{02}  + \varepsilon $  
+
+$log(\frac{\pi_3}{\pi_1}) = \alpha_{03} + \beta_{13} \times race + \varepsilon $  
++ for white -- $log(\frac{\pi_3}{\pi_1}) = \alpha_{03} + \beta_{13}  + \varepsilon $  
++ for nonwhite -- $log(\frac{\pi_3}{\pi_1}) = \alpha_{03}  + \varepsilon $  
+
++ We first draw the intercepts for white and non-white from a bi-normal distribution.
++ We coerce the intercept for people not being shot as zero. 
++ We draw twice from the the bi-normal distribution for people shot while unarmed and people shot while armed, separately. 
++ Use the softmax twice for people shot while unarmed and people shot while armed for white and nonwhite.   
++ The outcome is the ratio of the probabilities of an unarmed nonwhite person being shot to the probability of an unarmed white person being shot. 
+```{r}
+rstan::expose_stan_functions("priormulti_rng.stan") 
+##test<-priormulti_rng(1000)
+##dim(test) ##1000*3000
+##View(test)
+```
+
+
+###1.3 County Level Model     
++ The data does not include the covariate GRP.     
++ We cleaned the dataset and only keep the completed cases in term of the outcome and 8 covariates.   
+```{r}
+URL_root <- "https://raw.githubusercontent.com/ctross/Publications/master/"
+URL_dir <- "PLOS-RacialBiasPoliceShootings/Data/MaintainedImprovedData/"
+URL_file <- "MapFileData-WithCountyResultsAndCovariates.csv"
+county_data <- readr::read_csv(paste0(URL_root, URL_dir, URL_file))
+
+county_data$y <- county_data$m.log.RR_Black_Unarmed_Versus_White_Unarmed /
+county_data$sd.log.RR_Black_Unarmed_Versus_White_Unarmed
+
+county_data$white.assult.rate<-county_data$AssaultsWhite.sum/(county_data$WA_TOT)
+county_data$black.assult.rate<-county_data$AssaultsBlack.sum/(county_data$BAC_TOT)
+county_data$white.weapon.rate<-county_data$WeaponsWhite.sum/(county_data$WA_TOT)
+county_data$black.weapon.rate<-county_data$WeaponsBlack.sum/(county_data$BAC_TOT)
+
+county_data$black.ratio<-county_data$BAC_TOT/county_data$TOT_POP
+
+data1<-data.frame(county_data$y, county_data$`County FIPS Code`, county_data$TOT_POP, county_data$black.assult.rate, county_data$black.ratio, county_data$black.weapon.rate, county_data$white.assult.rate, county_data$white.weapon.rate, county_data$Gini, county_data$`Median Income`)
+data2<-data1[complete.cases(data1$county_data.y), ]
+names(data2)<-sub("county_data.", "", names(data2))
+
+##rescale the white/black assault and weapon rate by dividing the sd.
+data2$black.assult.rate1<-data2$black.assult.rate/sd(data2$black.assult.rate, na.rm=TRUE)
+data2$white.assult.rate1<-data2$white.assult.rate/sd(data2$white.assult.rate, na.rm = TRUE)
+data2$black.weapon.rate1<-data2$black.weapon.rate/sd(data2$black.weapon.rate, na.rm=TRUE)
+data2$white.weapon.rate1<-data2$white.weapon.rate/sd(data2$white.weapon.rate, na.rm=TRUE)
+
+data3<-data2[complete.cases(data2),]
+library(rstanarm)
+
+fit.1<-stan_glm(y~log(TOT_POP) + log(black.ratio)  + log(.Median.Income.)+ log(Gini) + log(white.assult.rate1) + log(black.assult.rate1+0.0001) + log(white.weapon.rate1+0.0001) + log(black.weapon.rate1+0.0001), data = data3, family=gaussian, prior=normal(-14, 4), prior_aux = cauchy(0, 5), QR=TRUE)
+
+print(fit.1, digit=2)
+```
+
+###1.4 Posterior Predictive Checks    
++ By plotting the CDF, it shows that the M25 is suitable for these data. The CDF plot shows an increasing trend with the largest value of 1 (In other word, integrate the PDF across the sample space, we will get 1).  
+```{r}
+PPD.fit1<-c(posterior_predict(fit.1))
+PPD.fit1<-sort(PPD.fit1)
+plot(PPD.fit1, 1:length(PPD.fit1)/length(PPD.fit1), type="l", las=1, xlim=c(0, 4), xlab="risk ratio of blacke unarmed vs white unarmed", ylab = "CDF")
+```
+
+
+###1.5 Projective Submodel    
++ The plot shows, no matter from the information of elpd or rmse, 2 coefficients/predictors are good, instead of 8 coefficients, in predicting future data. With these 2 coefficients, the performance is almost as good as the full model.     
++ We are using the cv_varsel (cross-validation) for this problem. Moreover, by further using the mcmc_areas, we find that the new model should include the variables "TOT_POP" (total population), and "Median.Income" (median income) in the reduced model.
+```{r}
+library(projpred)
+library(bayesplot)
+fit_vs<-varsel(fit.1)
+fit_cvs<-cv_varsel(fit.1, method = "forward", verbose = FALSE)
+suggest_size(fit_cvs)
+varsel_plot(fit_cvs, stats = c("elpd", "rmse"), deltas = TRUE)
+
+mcmc_areas(as.matrix(project(fit_vs, nv=2)))
+```
+
+
+###2. General Social Survey  
+
+###2.1 Generative model     
++ The outcome variable is *"satfin"* (So far as you and your family are concerned, would you say that you are pretty well satisfied with your present financial situation, more or less satisfied, or not satisfied at all?). It is an ordinal data with three levels: 1=pretty well satisfied; 2= more or less satisfied; 3=not satisfied at all. I further reorder it so that 3=pretty well satisfied; 2= more or less satisfied; 1=not satisfied at all.
++ Generative Model: $satfin=\alpha + \beta_1 \times educ.year + \beta_2 \times gender + \varepsilon$
++ The predictors are respondents'gender (1=male, 0=female) and the year of seduction. 
+
++ Exogenous knows: predictors (gender and year of seduction), prior mean and standard deviation, the number of observations, prior mean and standard deviations for normal priors on the intercept and coefficients. 
++ Exogenous unknowns: parameters of the model (e.g. $\alpha, \beta_1, \beta_2, \sigma$).
++ Endogenous knows: the observed dataset (GSS2018).
++ Endogenous unknowns: the prediction of the outcome (e.g the predicted people that are pretty well satisfied with their present financial situation in 2020).
+
++ The endogneous knows the outcome y is following a multinomial distribution; the exogenous unknowns are following: the error term follow a logistic distribution (0,1), the intercept and slopes parameter follow a normal distribution. 
+```{r}
+GSS2018 <- haven::read_dta("~/Downloadss/GSS2018.dta")
+
+table(GSS2018$satfin) ##ordinal: 1:pretty well satisfied; 2= more or less satisfied; 3=not satisfied at all. 
+
+GSS2018$satfin.new<-4-GSS2018$satfin
+
+table(GSS2018$sex)
+summary(GSS2018$educ)
+
+gss1<-GSS2018[, c("satfin.new", "sex", "educ")]
+gss<-gss1[complete.cases(gss1),]
+gss$satfin_new<-as.ordered(gss$satfin.new)
+gss$sex<-as.factor(gss$sex)
+gss$sex1<-ifelse(gss$sex==2, 0, 1)
+gss$educ<-as.numeric(gss$educ)
+```
+
+###2.2 Drawing from the prior predictive distribution      
++ The model implies a reasonable distribution. First, the cummulative mass function is 1. Second, since the outcome is multinomial and ordinal (it is discrete), the cdf plot is stair-like. We can tell that about 42% people select the option 1, about 60% select option 1 or option 2, 100% select option 1 or option 2 or option 3. 
+```{r}
+library(brms)
+library(ggplot2)
+fit.2<-brm(satfin_new ~ sex1 + educ, data=gss, family= cumulative, prior = c(prior(normal(0, 1), coef="sex1"), prior(normal(0, 1), coef="educ"),  prior(normal(0, 1), class="Intercept")), chains=7, sample_prior = "only")
+print(fit.2, digit=4)
+
+##cumulative density
+PPD<-c(posterior_predict(fit.2, draws=250))
+PPD<-sort(PPD)
+
+table(PPD)
+
+plot(PPD, 1:length(PPD)/length(PPD), type="l", las=1, xlab="ordinal satisfactory")
+
+```
+
+###2.3 Drawing from the Posterior Distribution       
++ The cutpoints (corresponding to the intercept for the brm output) are 0.2685 and 2.2654, and they are in logistic scales. The cutpoints are increasing which is reasonable under the priors that we use.   
++ The estimate for gender is 0.2977 and the estimate for year of education is 0.09.   
++ Compared with the prior predictive model that without conditioning on the observed data, the estimated errors of all coefficients become smaller when conditioning on the observed dataset. The estimates, when conditioning on the dataset, increase compared with the prior without conditioning on dataset. The effective sample size are larger.   
+```{r}
+fit.3<-brm(satfin_new ~ sex1 + educ, data=gss, family= cumulative, prior = c(prior(normal(0, 1), coef="sex1"), prior(normal(0, 1), coef="educ"), prior(normal(0, 1), class="Intercept")), chains=7)
+print(fit.3, digit=4)
+```
+

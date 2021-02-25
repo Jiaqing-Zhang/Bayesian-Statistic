@@ -1,0 +1,241 @@
+---
+title: "Bayesian Statistic Task 1"
+author: "Jiaqing Zhang"
+output:
+  html_document:
+    df_print: paged
+---
+
+# 1 Bowling Revisted
+
+```{r}
+# computes the x-th Fibonacci number without recursion and with vectorization
+F <- function(x) {
+  stopifnot(is.numeric(x), all(x == as.integer(x)))
+  sqrt_5 <- sqrt(5) # defined once, used twice
+  golden_ratio <- (1 + sqrt_5) / 2
+  return(round(golden_ratio ^ (x + 1) / sqrt_5))
+}
+
+# probability of knocking down x out of n pins
+Pr <- function(x, n = 10) return(ifelse(x > n, 0, (F(x) ^ 2) / (F(n) * F(n + 1))))
+
+Omega <- 0:10 # 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 is the sample space
+options(scipen = 999)
+```
+
+## 1.1 Admissibility
+Question 1.1: How do you know that this is an admissible probability mass function for bowling?
+Answer: the PMF is the function that gives the probability that a discrete random variable is exactly equal to that number. Thus, the PMF can be writen as: p(x|n=10) in the bowling context. The PMF, for this case should be bounded to [0, 1], and the sum of PMF for all sample space should be equal to 1. 
+```{r}
+Pr(Omega)
+sum(Pr(Omega))
+```
+
+
+##1.2 Three Cases
+```{r}
+joint_Pr <- matrix(0, nrow = 11, ncol = 11)
+rownames(joint_Pr) <- colnames(joint_Pr) <- as.character(Omega)
+for (x1 in Omega) {
+  Pr_x1 <- Pr(x1, n = 10)
+  for (x2 in 0:(10 - x1)) {
+    joint_Pr[x1 + 1, x2 + 1] <- Pr_x1 * Pr(x2, n = 10 - x1)
+  }
+}
+joint_Pr
+```
+
+
+Question 1.2.1: What number is the probability of a strike (knocking down all 10 pins) on the first roll of a frame of bowling?
+Answer 1.1.1: p(strike|n=10)=p(x1=10|n=10)=0.6181
+```{r}
+Pr_strike<-joint_Pr[11,1]
+Pr_strike
+```
+
+
+Question 1.2.2: What number is the probability of a spare (but not a strike) on a frame of bowling, i.e. knocking down all 10 pins on two rolls but not all 10 on the first roll?
+Answer 1.2.2: p(spare|n=10)=p(x1=9 ∩ x2=1|n=10)+p(x1=8 ∩ x2=2|n=10)+p(x1=7 ∩ x2=3|n=10)...+p(x1=0 ∩ x2=10|n=10), in other word, p(spare|n=10) is the sum of the secondary diagnol in the table of joint_pr expect the p(strike|n=10). Thus, p(spare|n=10)=sum(diag(apply(joint_Pr,2,rev)))-p(strike|n=10)=0.2120.
+```{r}
+Pr_spare<-sum(diag(apply(joint_Pr,2,rev)))-joint_Pr[11,1]
+Pr_spare
+```
+
+Question 1.2.3: What number is the probability of an "open frame", which is neither a strike nor a spare?
+Answer 1.2.3: p(not a strike ∩ not a spare|n=10)=1-p(strike|n=10)-p(spare|n=10), which is the sum of off-anti-diagnol. Thus, p(not a strike ∩ not a spare|n=10)=1-p(strike|n=10)-p(spare|n=10)=1-0.2120-0.6181=0.1699.
+
+## 1.3 Conditional Expectation
+Question 1.3: What number is the expected number of pins knocked down in a frame of bowling, given that it is an "open frame"?
+Answer 1.3: E(x1+x2|x1+x2<10, n=10)=ΣΣ(x1+x2)pr(x1 ∩ x2|x1+x2<10, n=10)=1.5024
+```{r}
+#sum the number of pins knocked down in two rolls
+total_pins<-matrix(,nrow=11, ncol=11)
+rownames(total_pins)<-colnames(total_pins)<-as.character(Omega)
+for (i in 1:11){
+  for (j in 1:11){
+    total_pins[i,j]<-i-1+j-1
+  } 
+    rev_pins<-apply(total_pins,2,rev)
+    rev_pins[upper.tri(rev_pins)]<-NA
+    total_pins_new<-apply(rev_pins,2,rev)
+}
+total_pins_new
+joint_Pr
+joint_exp1<-total_pins_new*joint_Pr
+sum(joint_exp1, na.rm = TRUE)-sum(diag(apply(joint_exp1,2,rev)))
+```
+
+
+
+## 1.4 Tenth Frame
+Question 1.4: Compute the number that is the expectation of the sum of the number of pins knocked down in the tenth frame of bowling.
+Answer 1.4:
+  Let x1, x2, x3 be the number of pins knocked down in the first roll, second roll and the third roll in the tenth      frame. According to the three different scenarios:
+  E(x1+x2+x3)=E[E[Y|X=x]]=E(x1+x2+x3|x1=10)+E(x1+x2+x3|x1+x2=10, x1<10)+E(x1+x2|x1+x2<10)
+             =(10+E(x2+x3|x2=10)+E(x2+x3|x2<10))*Pr(x1=10)+(10+E(x3))*Pr(x1+x2=10∩x1<10)+E(x1+x2|x1+x2<10)*Pr(x1+x2<10)
+             =(10+E(x2+x3))*Pr(x1=10)+(10+E(x3))*Pr(x1+x2=10∩x1<10)+E(x1+x2|x1+x2<10)*Pr(x1+x2<10)
+             =17.61564
+```{r}
+#the probability and expectation for any specific number of pins in the first roll (marginal probability)
+Pr1st<-rowSums(joint_Pr)
+exp_single<-sum(Pr1st*as.numeric(names(Pr1st))) ##what is the expectation of knock pins in a single roll
+exp2rolls_nostrike<-sum(joint_exp1,na.rm=TRUE)-joint_exp1[11,1] ##the expectation of 2 rolls with the first one is not a strike
+
+  #Part 1: for the (10+E(x2+x3|x2<10)+E(x2+x3|x2=10))*Pr(x1=10)
+  part_1<-(10+exp2rolls_nostrike+exp_single*Pr_strike)*Pr_strike
+  #Part 2: for the (10+E(x3))*Pr(x1+x2=10∩x1<10)
+  part_2<-(10+exp_single)*Pr_spare
+  #Part 3: for the E(x1+x2|x1+x2<10)*Pr(x1+x2<10), it is the expectation that for 2 rolls except the strike and spare cases. In other word, it should be the total expectation without the expectation of spare and strike
+  part_3<-sum(joint_exp1, na.rm = TRUE)-sum(diag(apply(joint_exp1,2,rev)))
+  
+  #Thus, the E(x1+x2+x3):
+  part_1+part_2+part_3
+```
+             
+           
+## 1.5 Perfect Game
+Question 1.5: What number is the probability of achieving a "perfect game", which is twelve consective strikes without any spares or open frames?
+Answer 1.5: p(perfect game)=[p(strick)^12]*((1-p(strick))^0)=p(strick)^12=0.0031
+```{r}
+Pr_strike^12
+```
+
+
+## 1.6 Scoring
+Question 1.6: What is the expectation of a person's score for an entire game of bowling?
+Answer 1.6: There are several different situations. For the first 9 frame, the way to calculate score is the same: (strike, strike, strike), (strike, strike, no strike), (strike, no strike, no strike), (spare, strike), (spare, no strike), (no strike, no strike), any two frames are indepdent. Let A1=scores for a frame (not the tenth frame)
+Thus, E(A1)=E(strike, strike, strike)+E(strike, strike, no strike)+E(strike, no strike, no strike)+E(spare, strike)+E(spare, no strike)+E(no strike, no strike)=19.97657
+![optional caption text](/Users/jiaqingzhang/Downloads/img.png)
+
+E(expected score for the entire game)=9*E(A1)+E(number of pins in tenth frame)=19.9765*9+17.61564=197.4048
+ 
+```{r}
+##possible scores in the entire game for strike cases
+  #part 1:strike case--E(strike, strike, strike)+E(strike, strike, no strike)+E(strike, no strike, no strike)
+  part_1S<-(Pr_strike^3)*30+(Pr_strike^2)*(10*(sum(Pr1st)-Pr1st[[11]])+exp_single-10*Pr1st[[11]])+Pr_strike*(exp2rolls_nostrike+10*(sum(joint_Pr, na.rm = TRUE)-joint_Pr[11,1]))
+  #part 2: spare case--E(spare, strike)+E(spare, no strike)
+  part_2S<-Pr_strike*Pr_spare*20+Pr_spare*(10*(sum(Pr1st)-Pr1st[[11]])+exp_single-10*Pr1st[[11]])
+  #part 3: no strike and no spare case--E(no strike, no strike)
+  part_3S<-sum(joint_exp1, na.rm = TRUE)-sum(diag(apply(joint_exp1,2,rev)))
+  #Thus, for a single frame (not the last frame), the expectation is:
+  exp_singleframe<-part_1S+part_2S+part_3S
+##There are 9 frames that could use this frame expecation to calculate
+
+## for the tenth frame, the expected score is the expected number of pins.
+##Thus, the expectation of the entire game is:
+  exp_singleframe*9+part_1+part_2+part_3
+```
+
+
+## 1.7 Variance
+Answer 1.7: Var(entire game)>Var(first nine frame)=Var(9*Single frame)=81*Var(single frame)>10*Var(single frame). Thus, the variance of person's score for an entire game of bowling is greater than ten times the variance of a person's core on a single frame of bowling.
+
+
+
+# 2 Probability in Poker
+
+## 2.1 Going "All In"
+Question 2.1: The utility function is about the amount win or lose. The sixth place will win nothing. However, the fifth player will win $2 million. Kaverman did not do anything when there were six players while putting all chips in when there were five players. If he lost when there were six players, he would win nothing. Thus, he was very conservative and did not go all in when there were six players. However, when there were five player, even the worst would win $2 millions. Thus, he just went all in. 
+
+## 2.2 Holz's First Decision
+Question 2.2.1: What is the probability that Holz nevertheless wins the hand by getting three or four of a kind?
+Answer: 2.2.1: To simplicity, the question is "what is the probability of getting three or four of a kind?". There are thirteen values of the card for 4 suits. Thus, there are total of 52 cards. In this situation, Kaverman already got two values higher than 10 (2 jacks/2 queens/2 kings/2 aces) and Holz had two 10s. Thus, the total remaining cards are 52-2-2=48. 
+Let A1=get 3 of a kind, A2=get four of a kind. For getting three of the kind, Holz either got three 10s and 2 others, or three others and two 10s. For the situation that get three others and two 10s, since Kaverman already got a pair. Thus, the remaining sets of number are: 13-1-1=11. For getting four of the kind, Holz got four 10s and one other. 
+p(A1)=p(one 10 and 2 others)+p(3 others)
+p(one 10 and 2 others)=(1 out of 2)*(2 out of 46)/(3 out of 48)=0.11968
+p(3 others)=(1 out of 11)*(3 out of 4)/(3 out of 48)=0.00254
+Thus, p(A1)=0.1222;
+p(A2)=p(2 10s and 1 other)=(2 out of 2)*(1 out of 46)/(3 out of 48)=0.00266
+
+The event A1 and event A2 are mutually exclusive, thus, p(A1∩A2)=0
+p(A1 or A2)=p(A1)+p(A2)-p(A1∩A2)=0.1222+0.00266=0.12486
+
+![optional caption text](/Users/jiaqingzhang/Downloads/img2.png)
+
+
+Question 2.2.2: If Kaverman has two cards with different values that are both higher than 10, what is the probability that Holz wins the hand?
+Answer: 2.2.2: The situation that Holz win was that Kaverman would not get a pair or get a pair in hand but the number is less than 10. Let A3=Kaverman not get a pair; A4=Kaverman get a pair but the number is less than 10. 
+p(A3)=p(not get a pair and no 10)+p(not get a pair and has a 10)=0.5272
+p(A4)=p(get a pair with number less than 10 and no 10)+p(get a pair with number less than 10 and a 10)=0.1055
+p(Holz win)=p(A3)+p(A4)-p(A3∩A4)=0.5272+0.1055-0=0.6327
+
+
+Question 2.2.3: Why Holz is obviously calling?
+Answer 2.2.3: According to the previous two questions, no matter under what situation, the probability of Holz's win is high. Thus, it is rational for him to call. 
+
+
+## 2.3 Holz's Second Decision
+Question 2.3.1: Given that Salomon get a pair of Aces, the chance of Holz to win will decrese since he only got two 10s in hand which are smaller than Aces. And of course the chance that Kaverman won the game will also decrease compared to 15% chance before. The chance that Salomon win would increase since 2 aces are better than 1 ace and 1 king. P(H|A)=p(H win and A)/p(A), p(K|A)=p(K win and A)/p(A), p(S|A)=p(S win and A)/p(A). We know that the p(K has another A)=3/7. 
+
+Question 2.3.2: What is the probability that Salomon had a pair of Aces?
+Answer 2.3.2: Let B1=Salomon get another aces. The known cards for Holz were his two cards and one of Salomon's card. Thus, the number of remaining unknown card for Holz are 52-2-1=49. Thus, p(B1)=(1 out of 3)/(1 out of 49)=0.0612.
+
+Question 2.3.3: Was Holz's decision to call the second time a good decision or a bad decision? Why?
+Answer 2.3.3: I think Holz's decision is a good decision. The probabilty that Salomon got a pair of aces is small, and the chance that Holz won even though Salomon got a pair of aces is still high. Thus, it is a good decision for Holz to call.
+
+
+## 2.4 Independent Chip Model
+Answer 2.4: 
+![optional caption text](/Users/jiaqingzhang/Downloads/img1.png)
+The expected amount of prize that Salomon would have won are 6.387 million. 
+
+```{r}
+##the probability that four people get the first place
+stacks <-c(Salomon =45000000,Holz =20650000,Bonomo =51150000,Smith =19700000)
+prize<-matrix(0, 4, 4)
+colnames(prize)<-c("Salomon","Holz","Bonomo","Smith")
+rownames(prize)<-c("1st place", "2nd place", "3rd place", "4th place")
+prize[1,]<-stacks/sum(stacks)
+
+##the probability for all four person to get the second place      
+for (i in 1:4){
+  for (j in 1:4){
+    if (i != j){
+      prize[2, i]<-prize[1, j]*prize[1,i]/(1-prize[1,j])+prize[2, i]
+    }
+  }
+}
+##the probability for all four person to get the third place  
+for (i in 1:4){
+  for (j in 1:4){
+    for (m in 1:4){
+     if (i!=j && i!=m && j!=m){
+      prize[3, i]<-prize[2, i]*prize[2, m]*prize[1,j]/(1-prize[2,j]-prize[2,m])+prize[3, i]
+     }
+    }
+    }
+}
+
+prize[4,]<-1-colSums(prize)
+prize
+
+#Thus, the expected value of it is:
+prize[1,1]*10+prize[2,1]*6+prize[3,1]*4+prize[4,1]*2.84
+```
+
+
+## 2.5 Perspectives on Probability
+Question 2.5: Explain how poker involves the classical, the frequentist, and the Bayesian perspectives on probability. 
+Answer 2.5: There are uncertainties in playing the poker game. The classcial measures the likelihood of an event happen. All things are equally likely to be happen. For example, everyone has equal chance to get a certain card. And every card has the same probability to be got, Frequentist: make an inference about a population parameter from a relatively small random sample. In the poker game, people usually play several rounds and they used the frequencies to make the decision. 
+Bayesian: the decision you made is influenced by other players on the table. You only know your two cards and without any knowledge of others. However, you know their decisions, e.g, fold or call. Based on their decisions, you will know some information and will then adjust your decision.

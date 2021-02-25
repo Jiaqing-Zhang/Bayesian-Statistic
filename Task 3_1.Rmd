@@ -1,0 +1,76 @@
+---
+title: "Task 3"
+author: "Jiaqing"
+date: "3/4/2019"
+output:
+  word_document: default
+  html_document: default
+---
+
+
+```{r}
+wages<-readRDS("/Users/jiaqingzhang/Downloads/wages.rds")
+names(wages)
+dim(wages)
+```
+
+### 1.1 Generative Model
+
+For the  endogenous known variable (WAGP), I think wage variable should be normally distributed as less people with extremely high or low income. The mean is $\mu$ and standard deviation is $\sigma$.
+$\beta_1$, which is the coefficient for the age variable (AGEP), is normally distributed as well. 
+$\beta_2$, which is the coefficeint for the gender, is normally distributed.
+$\beta_3$, which is the coefficent for hours worked per week, follows a normal distribution.
+$\beta_4$, which is the coefficent for educational attainment, is following a normal distribution.
+
+
+###1.2 Prior Median of R^2
+The $R^2$ in the previous model is the variance of wage explained by the predictors (age, insurance coverage, public assitance, gender, hours worked per week, and educational attainment). The median of $R^2$ may be 50%. 
+
+###1.3 Prior Predictive Distribution
+The median of the prior predictive $R^2$ using the ratio of the varaince of the conditional mean to the variance of the predictive mean is about 68%, which is much larger than we specified in the previous question. Moreover, not all $R^2$ are bounded to (0, 1).
+However, if different formulas of $R^2$ are used, as suggested in the paper http://www.stat.columbia.edu/~gelman/research/unpublished/bayes_R2.pdf, we will get $R^2$ about 50%. It is very close to that which we asserted in the previous question. 
+```{r, message = FALSE, warning=FALSE}
+##prior predictive distribution
+library(rstanarm)
+##do some transformation to recenter the predictors:
+wages$age.1<-wages$AGEP#-mean(wages$AGEP)
+wages$sex.1<-as.integer(wages$SEX)-1L
+wages$WKHP.1<-wages$WKHP#-mean(wages$WKHP)
+wages$SCHL.1<-as.integer(wages$SCHL)#-mean(wages$SCHL)
+
+prior<-stan_glm(log(PWGTP)~age.1+sex.1+WKHP.1+SCHL.1, data=wages, family = gaussian, prior_PD=TRUE, iter=1000, prior_intercept = normal(location = 0, scale = 30, autoscale = FALSE), prior=normal(location = 0, scale = 30,  autoscale = FALSE), prior_aux = cauchy(0, 30, autoscale = FALSE), QR=FALSE)
+
+prior
+
+##predictive distribution
+predi_out<-posterior_predict(prior, draws=250)
+dim(predi_out)
+
+##conditional mean
+predi_linpred<-posterior_linpred(prior, transform=TRUE, draws=250)
+dim(predi_linpred)
+
+e<--1*sweep(predi_linpred, 2, get_y(prior)) ##
+var_e<-apply(e, 1, var)
+
+pred.var<-apply(predi_out, MARGIN = 1, FUN = var)
+length(pred.var)
+condi.var<-apply(predi_linpred, MARGIN = 1, FUN = var)
+length(condi.var)
+
+##R^2
+r_2.1<-condi.var/pred.var
+median(r_2.1[which(r_2.1<1 & r_2.1>0)])
+hist(r_2.1[which(r_2.1<1)], breaks = 10)
+
+
+r_2.2<-condi.var/(condi.var+var_e)
+median(r_2.2)
+hist(r_2.2)
+
+median(bayes_R2(prior, newdata = NULL, draws=250))
+hist(bayes_R2(prior, newdata = NULL, draws=250))
+```
+
+
+

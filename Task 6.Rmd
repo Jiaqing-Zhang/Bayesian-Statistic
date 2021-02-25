@@ -1,0 +1,100 @@
+---
+title: "Task 6"
+author: "Jiaqing Zhang"
+date: "4/28/2019"
+output: html_document
+---
+
+###1. Humphreys and Jacobs Model   
+  
+**Huber's Argument**    
+  
++ How the biases that we bring to the research, which are the priors, affect the way that we learn the data?  Humphreys and Jacobs' framework (H&J framework) could help people to think about the biases systematically under the Bayesian framework. As Huber summarized, the steps to make inferences from a case is as follows: (1) assumes that there is a condition that x will cause y, which is the compliance situation; (2) some assumptions should be made, including the the likelihood of that the hypothesis is true and so on; (3) check the clue; (4) update the beliefs. However, Huber argued that it is hard to map a clue. There may exists biases and errors for the qualitative research about clues.     
+
++ The second comment is that how could researchers integrate the within-case with the between-case. Researchers make inferences based on prior beliefs. However, the biases may arise due to the way that we learn and the method that we choose.Hence, biases will become a part of the way that we work. Most of the researchers do not notice their biases and could not take these biases into account for their research. Huber said that the H&J framework tells people the way to recognize our own biases and use this recognition to create appropriate skepticism about our work.     
+
++ There are some values for the Bayesian approaches. Given the various ways that researchers work, biases may vary a lot and biases come from difference resources. Huber stated that these biases are prior beliefs. The H&J framework enables researchers to update their beliefs given new evidence and given the prior beliefs (i.e. biases). A larger range of biases could then be plugged in the framework of Humphreys and Jacobs to probe the effect of methodological bias. To make use of H&J framework, researchers should clearly know the parameters that are necessary for learning from new evidences. However, as Huber suggested, it also imposes a challenge for researchers. They should clearly know the influence of their biases on parameters, and thus the way to react to different sorts of evidence. The informativeness of a parameter depends on the belief about evidence (either informative for strong belief or uninformative for weak belief). Thus, the way we learn from new evidence depends on biases regarding existing evidences.    
+
++ Huber asks several questions regarding the role of theory played in the biases (prior). What constitutes a theory? How would the confidence on theory affect priors? What constitutes priors? Do we learn the most when we lack theory?
+
++ Moreover, Huber gives us an alternative emphasis on employing Bayesian framework: in order for particular new evidence to convince us of a causal effect, what would we have to believe?
+
+**How would Humphreys and Jacobs respond under their framework? **    
+  
++ H&J's approach, which is a mixed method, incorporates both the qualitative evidence and quantitative evidence under the Bayesian framework.     
+  
++ This framework allows researchers to draw causal inference conclusions by combining information from both the cross-case and within-case. Second, this approach enables the information/evidence from one form of data to inform the premises underlying the interpretation of the other form of data in a single method. Moreover, their approach can shed lights on the research designs to researchers allocating resources at the margins.    
+  
++ Under this framework, the research on cross-case and within-case and the causal-process evidence will help the researchers be able to state the prior distribution of (1) causal effects they would like to assessed; (2) the assignment process; (3) clue probabilities by type and treatment conditions. Even the researchers have "flat" prior information or "very biased" prior information, their beliefs update with the observed dataset.   
+  
++ The authors also provided three other constructive approaches under their framework to deal with these problems. First, researchers could report their conclusion by clearly stating their prior beliefs. They call it the conditional nature of inference, which reflects the sensitivity of conclusions to varying conditions.  
+  
++ Second, they introduced the subjective Bayes. Researchers make causal inferences based on their subjective prior beliefs. Thus, their conclusion is what they ought to believe as a matter of consistency after observing the data. However, as Huber stated, the prior beliefs or biases vary a lot from individual to individual, the conclusion is inevitably biased. Gill and Walker provided one solution. "Scholars might seek to ground priors on some systematic measure of collective beliefs, drawn for instance
+from a survey of existing findings or of experts in the
+relevant field" (Humphreys & Jacobs, 2015, p.672). 
+
++ The third approach they mentioned is objective Bayes. In this approach the prior should be set uniformly with maximized entropy. The mixed evidence of qualitative and quantitative data could then be used to update prior beliefs.
+
+
+
+
+###2. Constant Elasticity of Substitution Models
+```{r, message=FALSE,  warning=FALSE}
+library(AER)
+library(micEconCES)
+data("GrowthDJ")
+GrowthDJ<-subset(GrowthDJ, oil=="no") ##98 observations
+GrowthDJ$x1<-1
+GrowthDJ$x2<-(GrowthDJ$popgrowth+5)/GrowthDJ$invest
+
+cesNIs<-cesEst("gdp85", c("x1", "x2"), data=GrowthDJ)
+#summary(cesNIs, ela=FALSE)
+#cat("alpha=", (coef(cesNIs)["delta"]-1)/coef(cesNIs)["delta"], "\n")
+
+cdNIs<-cesEst("gdp85", c("x1", "x2"), data=GrowthDJ, rho=0)
+#summary(cdNIs, ela=FALSE)
+
+cdLog<-cesEst("gdp85", c("x1", "x2"), data=GrowthDJ, rho=0, multErr = TRUE)
+#summary(cdLog, ela=FALSE)
+```
+
+###2.1 Stan function for CES
+  
+**SBC CHECK**  
+Based on the numerical and graphical results, we can found that the histograms for all paramaters look uniformly distributed. Thus, it indicates STAN works well to draw from the posterior distribution. 
+ 
+```{r, cache = TRUE, message=FALSE, warning=FALSE}
+library(rstan)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+source("https://raw.githubusercontent.com/stan-dev/rstan/develop/rstan/rstan/R/SBC.R")
+
+sm <- stan_model("assignment 6_CES.stan")
+cat(readLines("assignment 6_CES.stan"), sep = "\n")
+
+dat <- list(N  = 98, popgrowth = GrowthDJ$popgrowth, invest =GrowthDJ$invest, loc=c(600, 0, 2, 1), scal=c(1, 1))
+results<-SBC(sm, data=dat, M=500)
+results
+plot(results)
+```
+ 
+  
+**SBC comments**  
+The comments are attached into the file **assignment 6_CES_SBC.stan**. Basically, there are two blocks that are closely related to the SBC. One is the transformed data, and the other is the generated quantities. These two blocks enable the conduction of SBC, which is an effective way to check the software.   
+  
+**Posterior Distribution**  
+The pair plot was created using the output of the posterior distribution in the stan function. 
+The effect size is large, which means that the STAN can relatively easily get efficient sample.  The pair plot shows that the parameters are not correlated, except alpha and sigma. The posterior means of the parameter are very similar to the point estimates obtained by the cesEST function. For the cesEST function, the alpha=0.75, sigma=0.84, and A=646.141. The means of the parameters got from the posterior distribution are: alpha=0.63, sigma=0.74, and A=628.89.  
+  
+```{r, message=FALSE,  warning=FALSE}
+library(rstan)
+writeLines(readLines("assignment 6_CES_SBC.stan"))
+dat1<-list(N  = 98,  GDP = log(GrowthDJ$gdp85), popgrowth = GrowthDJ$popgrowth, invest =GrowthDJ$invest, loc=c(600, 0, 2, 1), scal=c(1, 1))
+post_check <- stan("assignment 6_CES_SBC.stan", data = dat1, init_r = 0.5)
+post_check
+pairs(post_check, pars = c("A", "alpha", "sigma", "sigma_y", "lp__"), las = 1)
+```
+
+
+
+
